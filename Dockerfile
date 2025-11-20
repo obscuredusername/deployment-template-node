@@ -1,25 +1,26 @@
+# Base image
 FROM node:20-alpine AS base
+WORKDIR /app
 
 # Install dependencies only when needed
 FROM base AS deps
-WORKDIR /app
-
-# Copy package files
 COPY package*.json ./
-
-# Install dependencies
 RUN npm ci
 
-# Rebuild the source code only when needed
+# Builder stage
 FROM base AS builder
 WORKDIR /app
+
+# Copy installed dependencies
 COPY --from=deps /app/node_modules ./node_modules
+
+# Copy full source code
 COPY . .
 
-# Build Next.js application
+# Build Next.js
 RUN npm run build
 
-# Production image, copy all the files and run next
+# Production runner stage
 FROM base AS runner
 WORKDIR /app
 
@@ -29,11 +30,14 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
 
-# Copy necessary files for standalone output
+# Copy necessary files for production
+COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
-COPY --from=builder --chown=nextjs:nodejs /app/.next ./.next
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
+
+# Copy next.config file (supports both .js and .ts)
+COPY --from=builder /app/next.config.* ./
 
 USER nextjs
 
